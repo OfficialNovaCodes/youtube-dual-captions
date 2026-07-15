@@ -301,7 +301,14 @@
     const seq = ++explainSeq;
     requestExplanation({ selection, english, spanish }).then(
       (text) => { if (seq === explainSeq) body.textContent = text; },
-      (err) => { if (seq === explainSeq) body.textContent = `Couldn't get an explanation: ${err.message}`; },
+      (err) => {
+        if (seq !== explainSeq) return;
+        // "Extension context invalidated" = the extension was reloaded while
+        // this tab stayed open; only a page refresh reconnects them.
+        body.textContent = /context invalidated|receiving end does not exist/i.test(err.message)
+          ? 'The extension was updated — refresh this YouTube tab (⌘R) to reconnect the tutor.'
+          : `Couldn't get an explanation: ${err.message}`;
+      },
     );
   }
 
