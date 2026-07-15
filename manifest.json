@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "YouTube Dual Captions (EN + ES)",
+  "version": "1.0.0",
+  "description": "Shows the video's captions together with a Spanish translation, stacked on the YouTube player. For language learners.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": ["https://api.anthropic.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*"],
+      "js": ["interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://www.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_start"
+    }
+  ]
+}

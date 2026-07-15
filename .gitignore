@@ -1,0 +1,4 @@
+# Contains your personal Anthropic API key — never commit it.
+config.js
+
+.DS_Store

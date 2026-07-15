@@ -1,0 +1,126 @@
+#ydc-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 9%;
+  transform: translateX(-50%);
+  max-width: 88%;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2em; /* scales with the player-derived font size set inline by content.js */
+  text-align: center;
+  pointer-events: none;
+}
+
+.ydc-line {
+  pointer-events: auto; /* click toggles English; select/double-click a word for the tutor bubble */
+  cursor: pointer;
+  user-select: text;
+  white-space: pre-wrap;
+  background: rgba(8, 8, 8, 0.75);
+  border-radius: 0.15em;
+  padding: 0.1em 0.4em;
+  font-family: "YouTube Noto", Roboto, Arial, sans-serif;
+  font-size: inherit; /* the overlay's font size tracks the player width */
+  line-height: 1.35;
+  color: #fff;
+}
+
+.ydc-line--secondary {
+  color: #fff6d8;
+}
+
+.ydc-line::selection,
+.ydc-line *::selection {
+  background: #4a86ff;
+  color: #fff;
+}
+
+/* Tutor bubble: shows Claude's explanation of the highlighted text.
+   Pinned top-left so the captions below stay readable. */
+#ydc-bubble {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: min(480px, 55%);
+  z-index: 61;
+  display: none;
+  background: rgba(16, 16, 20, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-family: "YouTube Noto", Roboto, Arial, sans-serif;
+  pointer-events: auto;
+  user-select: text;
+  cursor: default;
+}
+
+.ydc-bubble-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  user-select: none;
+}
+
+.ydc-bubble-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff6d8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ydc-bubble-speak {
+  flex: none;
+  background: none;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  filter: grayscale(35%);
+}
+
+.ydc-bubble-speak:hover {
+  filter: none;
+  transform: scale(1.12);
+}
+
+.ydc-bubble-close {
+  flex: none;
+  margin-left: auto; /* keep the × pinned to the right edge */
+  background: none;
+  border: none;
+  color: #bbb;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.ydc-bubble-close:hover {
+  color: #fff;
+}
+
+.ydc-bubble-body {
+  padding: 10px 12px 12px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* don't hand leftover scroll to the page */
+  white-space: pre-wrap;
+}
+
+/* Hide YouTube's own caption rendering while the dual overlay is active,
+   so captions aren't shown twice. */
+.ydc-hide-native .ytp-caption-window-container {
+  visibility: hidden !important;
+}
