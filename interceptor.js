@@ -110,6 +110,25 @@
     } catch {}
   }
 
+  // The auto-translate language list is per-video: some offer "Spanish
+  // (U.S.)" (es-US), others plain "Spanish" (es). Requesting a code the
+  // video doesn't offer gets rejected, so pick from the player's own list,
+  // preferring Latin American variants.
+  function resolveTargetLang() {
+    const player = playerEl();
+    try {
+      const langs = (player && player.getOption('captions', 'translationLanguages')) || [];
+      const prefs = ['es-US', 'es-419', 'es-MX', 'es', 'es-ES'];
+      for (const p of prefs) {
+        const hit = langs.find((l) => l && l.languageCode === p);
+        if (hit) return hit.languageCode;
+      }
+      const any = langs.find((l) => l && isLang(l.languageCode, TARGET_LANG));
+      if (any) return any.languageCode;
+    } catch {}
+    return TARGET_LANG;
+  }
+
   function ccIsOn() {
     const btn = document.querySelector('.ytp-subtitles-button');
     return btn && btn.getAttribute('aria-pressed') === 'true';
@@ -140,7 +159,7 @@
       }
     } catch {}
     try {
-      const drive = Object.assign({}, base, { translationLanguage: { languageCode: TARGET_LANG } });
+      const drive = Object.assign({}, base, { translationLanguage: { languageCode: resolveTargetLang() } });
       delete drive.variant;
       player.setOption('captions', 'track', drive);
     } catch {
@@ -174,7 +193,7 @@
       else cp.searchParams.set('tlang', FALLBACK_BASE);
     } else {
       role = 'secondary';
-      cp.searchParams.set('tlang', TARGET_LANG);
+      cp.searchParams.set('tlang', resolveTargetLang());
       // Translating experimental caption variants (e.g. variant=gemini)
       // gets rejected — request the standard track's translation instead.
       cp.searchParams.delete('variant');
