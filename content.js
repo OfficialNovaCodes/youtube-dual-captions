@@ -344,6 +344,7 @@
     );
   }
 
+  let cachePollCountdown = 0;
   function tick() {
     const player = document.getElementById('movie_player');
     if (!player) return;
@@ -366,6 +367,15 @@
     overlay.style.display = active ? '' : 'none';
     player.classList.toggle('ydc-hide-native', active);
     if (!active) return;
+
+    // Translation still missing? Peek at the shared cache every ~5s — another
+    // tab (or a later retry) may have fetched it for this video already.
+    if (!state.secondary.length && --cachePollCountdown <= 0) {
+      cachePollCountdown = 50;
+      const vid = new URLSearchParams(location.search).get('v');
+      const cached = vid && loadEsCache(vid);
+      if (cached) state.secondary = cached;
+    }
 
     if (holdUpdates) return; // don't wipe an in-progress selection
     const tMs = video.currentTime * 1000;

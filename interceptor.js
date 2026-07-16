@@ -42,9 +42,24 @@
     state.lastPrimaryUrl = null;
   }
 
+  // After any 429, all open YouTube tabs back off together for a while —
+  // parallel tabs share one rate-limit bucket and amplify each other.
+  const COOLDOWN_KEY = 'ydc-tt-cooldown';
+  function underCooldown() {
+    try { return Date.now() < (+localStorage.getItem(COOLDOWN_KEY) || 0); } catch { return false; }
+  }
+  function tripCooldown(ms) {
+    try {
+      const until = Date.now() + ms;
+      if ((+localStorage.getItem(COOLDOWN_KEY) || 0) < until) {
+        localStorage.setItem(COOLDOWN_KEY, String(until));
+      }
+    } catch {}
+  }
+
   // The translated track can be temporarily rate-limited (429) even for the
   // player's own request. Retry with spaced backoff until it comes through.
-  const RETRY_DELAYS = [8000, 20000, 45000, 90000, 180000];
+  const RETRY_DELAYS = [8000, 20000, 45000, 90000, 180000, 300000];
   function scheduleRetry() {
     if (state.secondary || state.retryPending) return;
     if (state.attempts >= RETRY_DELAYS.length) return;
@@ -83,6 +98,7 @@
   // original track once the translation has been captured.
   function driveTranslation() {
     if (state.driven) return true;
+    if (underCooldown()) return false;
     const player = playerEl();
     if (!player || typeof player.setOption !== 'function' || typeof player.getOption !== 'function') {
       return false;
@@ -90,9 +106,21 @@
     let saved = null;
     try { saved = player.getOption('captions', 'track'); } catch {}
     if (!saved || !saved.languageCode) return false;
+    // Translating experimental caption variants (variant=gemini) gets
+    // rejected with 429s — drive the translation from the standard track.
+    let base = saved;
     try {
-      player.setOption('captions', 'track',
-        Object.assign({}, saved, { translationLanguage: { languageCode: TARGET_LANG } }));
+      if (/gemini/i.test(JSON.stringify(saved))) {
+        const list = player.getOption('captions', 'tracklist') || [];
+        const alt = list.find((t) => t && isLang(t.languageCode, String(saved.languageCode).split('-')[0])
+          && !/gemini/i.test(JSON.stringify(t)));
+        if (alt) base = alt;
+      }
+    } catch {}
+    try {
+      const drive = Object.assign({}, base, { translationLanguage: { languageCode: TARGET_LANG } });
+      delete drive.variant;
+      player.setOption('captions', 'track', drive);
     } catch {
       return false;
     }
@@ -130,9 +158,11 @@
     }
     const cpUrl = cp.toString();
     if (cpUrl === url || (!force && requestedCounterparts.has(cpUrl))) return;
+    if (role === 'secondary' && underCooldown()) return;
     requestedCounterparts.add(cpUrl);
     try {
       const resp = await origFetch(cpUrl, { credentials: 'same-origin' });
+      if (resp.status === 429) tripCooldown(60000);
       const body = await resp.text();
       if (resp.ok && looksLikeCaptions(body)) {
         dispatchTrack(role, body);
@@ -164,7 +194,8 @@
       const role = isTarget ? 'secondary' : 'primary';
 
       if (ok === false || !looksLikeCaptions(bodyText)) {
-        // Rate-limited or error response — retry the translation later.
+        // Rate-limited or error response — back off (all tabs) and retry.
+        if (ok === false) tripCooldown(60000);
         if (role === 'secondary' && state.primary) scheduleRetry();
         return;
       }
@@ -181,6 +212,7 @@
         if (driveTranslation()) return;
       }
       fetchCounterpart(url);
+      if (missing === 'secondary') scheduleRetry(); // watchdog even if gated by cooldown
     } catch (e) {
       // Never break the page over caption handling.
     }
