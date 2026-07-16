@@ -69,6 +69,30 @@
     return cues;
   }
 
+  // Translations get rate-limited by YouTube sometimes, so cache the Spanish
+  // track per video: rewatching or refreshing never re-asks YouTube.
+  const ES_CACHE_KEY = 'ydc-es-cache-v1';
+  function readCacheMap() {
+    try { return JSON.parse(localStorage.getItem(ES_CACHE_KEY)) || {}; } catch { return {}; }
+  }
+  function saveEsCache(videoId, cues) {
+    try {
+      const compact = cues.map((c) => [c.start, c.end, c.text]);
+      if (JSON.stringify(compact).length > 250000) return; // don't hog storage
+      const map = readCacheMap();
+      map[videoId] = { t: Date.now(), c: compact };
+      // keep only the 6 most recent videos
+      Object.keys(map).sort((a, b) => map[b].t - map[a].t).slice(6)
+        .forEach((id) => delete map[id]);
+      localStorage.setItem(ES_CACHE_KEY, JSON.stringify(map));
+    } catch {}
+  }
+  function loadEsCache(videoId) {
+    const entry = readCacheMap()[videoId];
+    if (!entry || !Array.isArray(entry.c) || !entry.c.length) return null;
+    return entry.c.map(([start, end, text]) => ({ start, end, text, words: [{ t: start, text }] }));
+  }
+
   document.addEventListener('ydc:track', (e) => {
     let d;
     try {
@@ -77,7 +101,15 @@
       return;
     }
     const cues = parseJson3(d.body);
-    if (cues.length) state[d.role] = cues;
+    if (cues.length) {
+      state[d.role] = cues;
+      if (d.role === 'secondary' && d.videoId) saveEsCache(d.videoId, cues);
+    }
+    // Translation missing (e.g. rate-limited)? Use the cached one meanwhile.
+    if (d.videoId && !state.secondary.length) {
+      const cached = loadEsCache(d.videoId);
+      if (cached) state.secondary = cached;
+    }
   });
 
   function reset() {

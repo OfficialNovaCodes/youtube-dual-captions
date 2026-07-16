@@ -28,7 +28,7 @@
   const requestedCounterparts = new Set();
   const state = {
     videoId: null, primary: false, secondary: false,
-    driven: false, bootstrapped: false, attempts: 0, retryPending: false,
+    driven: false, bootstrapped: false, attempts: 0, retryPending: false, lastPrimaryUrl: null,
   };
   let restoreTrack = null;
 
@@ -39,11 +39,12 @@
     state.driven = false;
     state.attempts = 0;
     state.retryPending = false;
+    state.lastPrimaryUrl = null;
   }
 
   // The translated track can be temporarily rate-limited (429) even for the
   // player's own request. Retry with spaced backoff until it comes through.
-  const RETRY_DELAYS = [8000, 20000, 45000];
+  const RETRY_DELAYS = [8000, 20000, 45000, 90000, 180000];
   function scheduleRetry() {
     if (state.secondary || state.retryPending) return;
     if (state.attempts >= RETRY_DELAYS.length) return;
@@ -53,14 +54,18 @@
     setTimeout(() => {
       state.retryPending = false;
       if (state.secondary || state.videoId !== vid) return;
+      // Try both strategies each round: the player-driven request and a
+      // direct re-fetch of the captured base-track URL.
       state.driven = false;
       driveTranslation();
+      if (state.lastPrimaryUrl) fetchCounterpart(state.lastPrimaryUrl, true);
+      scheduleRetry();
     }, delay);
   }
 
   function dispatchTrack(role, body) {
     document.dispatchEvent(new CustomEvent('ydc:track', {
-      detail: JSON.stringify({ role, body })
+      detail: JSON.stringify({ role, body, videoId: state.videoId })
     }));
   }
 
@@ -106,7 +111,7 @@
     return true;
   }
 
-  async function fetchCounterpart(url) {
+  async function fetchCounterpart(url, force) {
     const cp = new URL(url, location.origin);
     const tlang = cp.searchParams.get('tlang');
     const lang = cp.searchParams.get('lang');
@@ -119,9 +124,12 @@
     } else {
       role = 'secondary';
       cp.searchParams.set('tlang', TARGET_LANG);
+      // Translating experimental caption variants (e.g. variant=gemini)
+      // gets rejected — request the standard track's translation instead.
+      cp.searchParams.delete('variant');
     }
     const cpUrl = cp.toString();
-    if (cpUrl === url || requestedCounterparts.has(cpUrl)) return;
+    if (cpUrl === url || (!force && requestedCounterparts.has(cpUrl))) return;
     requestedCounterparts.add(cpUrl);
     try {
       const resp = await origFetch(cpUrl, { credentials: 'same-origin' });
@@ -163,6 +171,7 @@
 
       dispatchTrack(role, bodyText);
       state[role] = true;
+      if (role === 'primary') state.lastPrimaryUrl = url;
       if (role === 'secondary' && restoreTrack) restoreTrack();
       if (state.primary && state.secondary) return;
 
