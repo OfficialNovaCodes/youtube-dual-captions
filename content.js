@@ -379,7 +379,10 @@
 
     if (holdUpdates) return; // don't wipe an in-progress selection
     const tMs = video.currentTime * 1000;
-    setLine(overlay.children[0], hidePrimary ? '' : activeText(state.primary, tMs));
+    // Quiz mode (English hidden) only applies while Spanish is present —
+    // never leave the viewer with no captions at all.
+    const hideEn = hidePrimary && state.secondary.length > 0;
+    setLine(overlay.children[0], hideEn ? '' : activeText(state.primary, tMs));
     setLine(overlay.children[1], activeText(state.secondary, tMs));
   }
 

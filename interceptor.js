@@ -28,7 +28,7 @@
   const requestedCounterparts = new Set();
   const state = {
     videoId: null, primary: false, secondary: false,
-    driven: false, bootstrapped: false, attempts: 0, retryPending: false, lastPrimaryUrl: null,
+    driven: false, bootstrapped: false, attempts: 0, retryPending: false, lastPrimaryUrl: null, recovered: false,
   };
   let restoreTrack = null;
 
@@ -40,6 +40,7 @@
     state.attempts = 0;
     state.retryPending = false;
     state.lastPrimaryUrl = null;
+    state.recovered = false;
   }
 
   // After any 429, all open YouTube tabs back off together for a while —
@@ -88,6 +89,27 @@
     return document.getElementById('movie_player');
   }
 
+  // If the page loaded with the caption preference stuck on a translated
+  // track (e.g. after an interrupted translation dance) and that fetch is
+  // failing, switch the player back to the plain base track so the
+  // original-language captions load.
+  function recoverBaseTrack() {
+    if (state.recovered) return;
+    const player = playerEl();
+    if (!player || typeof player.setOption !== 'function' || typeof player.getOption !== 'function') return;
+    let t = null;
+    try { t = player.getOption('captions', 'track'); } catch {}
+    if (!t || !t.languageCode) return;
+    state.recovered = true;
+    try { player.setOption('captions', 'translationLanguage', null); } catch {}
+    try {
+      const clean = Object.assign({}, t);
+      delete clean.translationLanguage;
+      delete clean.variant;
+      player.setOption('captions', 'track', clean);
+    } catch {}
+  }
+
   function ccIsOn() {
     const btn = document.querySelector('.ytp-subtitles-button');
     return btn && btn.getAttribute('aria-pressed') === 'true';
@@ -127,6 +149,7 @@
     state.driven = true;
     restoreTrack = () => {
       restoreTrack = null;
+      try { player.setOption('captions', 'translationLanguage', null); } catch {}
       try {
         const clean = Object.assign({}, saved);
         delete clean.translationLanguage;
@@ -196,7 +219,12 @@
       if (ok === false || !looksLikeCaptions(bodyText)) {
         // Rate-limited or error response — back off (all tabs) and retry.
         if (ok === false) tripCooldown(60000);
-        if (role === 'secondary' && state.primary) scheduleRetry();
+        if (role === 'secondary') {
+          // No base track yet means the player itself is stuck requesting
+          // the (failing) translated track — put it back on the base track.
+          if (!state.primary) recoverBaseTrack();
+          else scheduleRetry();
+        }
         return;
       }
 
