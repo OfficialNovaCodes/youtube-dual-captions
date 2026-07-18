@@ -89,6 +89,12 @@
     return document.getElementById('movie_player');
   }
 
+  // Shorts autoplay in rapid succession — running the translation machinery
+  // there burns through YouTube's quota fast. Stay dormant on Shorts.
+  function onShorts() {
+    return location.pathname.startsWith('/shorts');
+  }
+
   // If the page loaded with the caption preference stuck on a translated
   // track (e.g. after an interrupted translation dance) and that fetch is
   // failing, switch the player back to the plain base track so the
@@ -224,6 +230,7 @@
 
   async function handleTimedtext(url, bodyText, ok) {
     try {
+      if (onShorts()) return;
       const u = new URL(url, location.origin);
       if (u.searchParams.get('fmt') !== 'json3') return;
 
@@ -268,6 +275,7 @@
   // If the base track loaded before our hook attached, reload the captions
   // module so the player requests it again where we can capture it.
   function bootstrap() {
+    if (onShorts()) return;
     if (state.primary || state.bootstrapped) return;
     if (!ccIsOn()) return; // don't force captions on for the user
     const player = playerEl();

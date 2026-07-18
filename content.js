@@ -346,6 +346,7 @@
 
   let cachePollCountdown = 0;
   function tick() {
+    if (location.pathname.startsWith('/shorts')) return; // dormant on Shorts
     const player = document.getElementById('movie_player');
     if (!player) return;
     const video = player.querySelector('video');
