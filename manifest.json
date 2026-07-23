@@ -6,7 +6,10 @@
   "background": {
     "service_worker": "background.js"
   },
-  "host_permissions": ["https://api.anthropic.com/*"],
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://translate.google.com/*"
+  ],
   "content_scripts": [
     {
       "matches": ["*://www.youtube.com/*"],

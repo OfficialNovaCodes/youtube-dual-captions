@@ -66,11 +66,37 @@ async function explain(payload) {
   return text;
 }
 
+// Pronunciation audio: fetch the Google Translate voice for the highlighted
+// text (same voice as translate.google.com; no API key needed). The content
+// script falls back to the browser's TTS if this fails.
+async function fetchTts({ text, lang }) {
+  const tl = lang === 'es' ? 'es' : 'en';
+  const q = encodeURIComponent(String(text).slice(0, 200));
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${q}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`TTS fetch failed: ${resp.status}`);
+  const bytes = new Uint8Array(await resp.arrayBuffer());
+  if (!bytes.length) throw new Error('Empty TTS response');
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (!msg || msg.type !== 'ydc-explain') return undefined;
-  explain(msg.payload).then(
-    (text) => sendResponse({ ok: true, text }),
-    (err) => sendResponse({ ok: false, error: String((err && err.message) || err) }),
-  );
-  return true; // keep the message channel open for the async response
+  if (!msg) return undefined;
+  if (msg.type === 'ydc-explain') {
+    explain(msg.payload).then(
+      (text) => sendResponse({ ok: true, text }),
+      (err) => sendResponse({ ok: false, error: String((err && err.message) || err) }),
+    );
+    return true; // keep the message channel open for the async response
+  }
+  if (msg.type === 'ydc-tts') {
+    fetchTts(msg.payload).then(
+      (b64) => sendResponse({ ok: true, b64 }),
+      (err) => sendResponse({ ok: false, error: String((err && err.message) || err) }),
+    );
+    return true;
+  }
+  return undefined;
 });

@@ -232,7 +232,59 @@
     return voices.find((v) => v.lang.toLowerCase().startsWith(langBase)) || null;
   }
 
+  // Preferred voice: Google Translate's TTS, fetched by the background
+  // worker (much more natural than most local voices). Falls back to the
+  // browser's speech synthesis if the fetch fails.
+  let audioEl = null;
+  let ttsCache = { key: '', b64: '' };
+
+  function requestTts(payload) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage({ type: 'ydc-tts', payload }, (resp) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else if (resp && resp.ok) resolve(resp.b64);
+          else reject(new Error((resp && resp.error) || 'No TTS response.'));
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  function playB64(b64) {
+    try {
+      if (audioEl) audioEl.pause();
+      if (window.speechSynthesis) speechSynthesis.cancel(); // no double voices
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const blobUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }));
+      audioEl = new Audio(blobUrl);
+      audioEl.playbackRate = 0.9; // slightly slowed, easier to shadow
+      audioEl.onended = () => URL.revokeObjectURL(blobUrl);
+      audioEl.play().catch(() => speakWithBrowser());
+    } catch (e) {
+      speakWithBrowser();
+    }
+  }
+
   function speak() {
+    const { text, lang } = currentSpeech;
+    if (!text) return;
+    const key = `${lang}|${text}`;
+    if (ttsCache.key === key && ttsCache.b64) {
+      playB64(ttsCache.b64); // replay without refetching
+      return;
+    }
+    requestTts({ text, lang }).then(
+      (b64) => {
+        ttsCache = { key, b64 };
+        playB64(b64);
+      },
+      () => speakWithBrowser(),
+    );
+  }
+
+  function speakWithBrowser() {
     if (!currentSpeech.text || !window.speechSynthesis) return;
     try {
       speechSynthesis.cancel(); // stop any previous playback
