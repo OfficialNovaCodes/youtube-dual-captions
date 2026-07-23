@@ -280,7 +280,10 @@
         ttsCache = { key, b64 };
         playB64(b64);
       },
-      () => speakWithBrowser(),
+      (err) => {
+        console.warn('[dual-captions] Google TTS unavailable, using browser voice:', err.message);
+        speakWithBrowser();
+      },
     );
   }
 

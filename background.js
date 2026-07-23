@@ -69,17 +69,40 @@ async function explain(payload) {
 // Pronunciation audio: fetch the Google Translate voice for the highlighted
 // text (same voice as translate.google.com; no API key needed). The content
 // script falls back to the browser's TTS if this fails.
+function looksLikeMp3(bytes) {
+  if (!bytes || bytes.length < 4) return false;
+  // ID3 tag or an MPEG frame sync at the start
+  if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) return true;
+  return bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
+}
+
 async function fetchTts({ text, lang }) {
   const tl = lang === 'es' ? 'es' : 'en';
   const q = encodeURIComponent(String(text).slice(0, 200));
-  const url = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${q}`;
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`TTS fetch failed: ${resp.status}`);
-  const bytes = new Uint8Array(await resp.arrayBuffer());
-  if (!bytes.length) throw new Error('Empty TTS response');
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin);
+  const urls = [
+    `https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=${tl}&q=${q}`,
+    `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${q}`,
+  ];
+  let lastError = 'no endpoint tried';
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url);
+      const type = resp.headers.get('content-type') || '';
+      const bytes = new Uint8Array(await resp.arrayBuffer());
+      // Never hand non-audio (block pages, HTML errors) to the player —
+      // decoding garbage as MP3 is what produces beeps and noise.
+      if (resp.ok && looksLikeMp3(bytes) && !type.includes('text/html')) {
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin);
+      }
+      const preview = new TextDecoder().decode(bytes.slice(0, 80)).replace(/\s+/g, ' ');
+      lastError = `status ${resp.status}, type ${type || 'none'}, body "${preview}"`;
+    } catch (e) {
+      lastError = String((e && e.message) || e);
+    }
+  }
+  throw new Error(`TTS unavailable: ${lastError}`);
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
